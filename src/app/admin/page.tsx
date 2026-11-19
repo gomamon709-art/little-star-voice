@@ -39,6 +39,291 @@ const CHAMBER_OPTIONS: ("衆議院" | "参議院" | "地方議会")[] = [
   "地方議会",
 ];
 
+const PREFECTURES_LIST = [
+  "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+  "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+  "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+  "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+];
+
+// テキストからの正規表現・ルールベース一括解析関数
+function parsePoliticianFromText(
+  rawText: string,
+  base: Partial<Politician>
+): { result: Partial<Politician>; detected: string[] } {
+  const result: Partial<Politician> = { ...base };
+  const detected: string[] = [];
+
+  const text = rawText.trim();
+  if (!text) return { result, detected };
+
+  // 1. JSON / オブジェクト形式の解析試行
+  try {
+    const jsonCandidate = text.replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"');
+    const parsedObj = JSON.parse(jsonCandidate);
+    if (parsedObj && typeof parsedObj === "object") {
+      if (parsedObj.id) { result.id = String(parsedObj.id); detected.push("ID"); }
+      if (parsedObj.cardNo) { result.cardNo = String(parsedObj.cardNo); detected.push("カード番号"); }
+      if (parsedObj.name) { result.name = String(parsedObj.name); detected.push("氏名"); }
+      if (parsedObj.kana) { result.kana = String(parsedObj.kana); detected.push("ふりがな"); }
+      if (parsedObj.party) { result.party = String(parsedObj.party); detected.push("政党"); }
+      if (parsedObj.partyCategory) { result.partyCategory = String(parsedObj.partyCategory); detected.push("政党カテゴリ"); }
+      if (parsedObj.chamber) { result.chamber = parsedObj.chamber; detected.push("議会種別"); }
+      if (parsedObj.title) { result.title = String(parsedObj.title); detected.push("肩書"); }
+      if (parsedObj.divisionText) { result.divisionText = String(parsedObj.divisionText); detected.push("区分"); }
+      if (parsedObj.prefecture) { result.prefecture = String(parsedObj.prefecture); detected.push("都道府県"); }
+      if (parsedObj.region) { result.region = String(parsedObj.region); detected.push("地域"); }
+      if (parsedObj.questionDate) { result.questionDate = String(parsedObj.questionDate); detected.push("質問日"); }
+      if (parsedObj.questionYear) { result.questionYear = Number(parsedObj.questionYear); detected.push("質問年"); }
+      if (Array.isArray(parsedObj.themes)) { result.themes = parsedObj.themes; detected.push("テーマ"); }
+      if (parsedObj.summary) { result.summary = String(parsedObj.summary); detected.push("概要"); }
+      if (parsedObj.sourceTitle) { result.sourceTitle = String(parsedObj.sourceTitle); detected.push("出典名"); }
+      if (parsedObj.sourceUrl) { result.sourceUrl = String(parsedObj.sourceUrl); detected.push("出典URL"); }
+      if (parsedObj.xPostUrl) { result.xPostUrl = String(parsedObj.xPostUrl); detected.push("XポストURL"); }
+    }
+  } catch {
+    // 通常のテキストパースへ
+  }
+
+  // 2. カード番号 & ID
+  const cardMatch =
+    text.match(/(?:紹介カード|カード|No\.?|ID)\s*[:：=]?\s*(\d+)/i) ||
+    text.match(/id\s*[:：=]\s*["']?(\d+)["']?/i);
+  if (cardMatch) {
+    const rawId = cardMatch[1];
+    const padId = rawId.padStart(2, "0");
+    result.id = padId;
+    result.cardNo = `紹介カード ${padId}`;
+    if (!detected.includes("ID")) detected.push("ID");
+    if (!detected.includes("カード番号")) detected.push("カード番号");
+  }
+
+  // 3. 氏名 & ふりがな
+  const nameLabelMatch = text.match(
+    /(?:氏名|名前|議員名)\s*[:：]?\s*([^\n\(\(（]+)(?:[（\(]([^\)）]+)[）\)])?/
+  );
+  if (nameLabelMatch) {
+    const n = nameLabelMatch[1].trim();
+    if (n) {
+      result.name = n;
+      if (!detected.includes("氏名")) detected.push("氏名");
+    }
+    if (nameLabelMatch[2]) {
+      const k = nameLabelMatch[2].trim();
+      result.kana = k;
+      if (!detected.includes("ふりがな")) detected.push("ふりがな");
+    }
+  } else {
+    // 氏名ラベルなし「古川あおい（ふるかわ あおい）」などのパターン
+    const parenMatch = text.match(/^([^\s:：]{2,10})\s*[（\(]([ぁ-ん\s]{3,20})[）\)]/m);
+    if (parenMatch && !result.name) {
+      result.name = parenMatch[1].trim();
+      result.kana = parenMatch[2].trim();
+      if (!detected.includes("氏名")) detected.push("氏名");
+      if (!detected.includes("ふりがな")) detected.push("ふりがな");
+    }
+  }
+
+  // 個別のふりがなラベル
+  const kanaLabelMatch = text.match(
+    /(?:ふりがな|フリガナ|かな|よみがな|ルビ|kana|ruby)\s*[:：]?\s*([^\n]+)/i
+  );
+  if (kanaLabelMatch && kanaLabelMatch[1].trim()) {
+    result.kana = kanaLabelMatch[1].trim();
+    if (!detected.includes("ふりがな")) detected.push("ふりがな");
+  }
+
+  // 4. 政党
+  const partyLabelMatch = text.match(/(?:政党|所属政党|会派|所属|party)\s*[:：]?\s*([^\n]+)/i);
+  if (partyLabelMatch && partyLabelMatch[1].trim()) {
+    result.party = partyLabelMatch[1].trim();
+    if (!detected.includes("政党")) detected.push("政党");
+  } else {
+    const knownParties = [
+      "自由民主党", "自民党", "立憲民主党", "公明党", "日本維新の会", "日本共産党",
+      "国民民主党", "れいわ新選組", "社会民主党", "社民党", "参政党", "チームみらい",
+      "ふくおか政策の会"
+    ];
+    for (const kp of knownParties) {
+      if (text.includes(kp) && !result.party) {
+        result.party = kp;
+        if (!detected.includes("政党")) detected.push("政党");
+        break;
+      }
+    }
+  }
+
+  // 政党カテゴリ自動判定
+  if (result.party) {
+    const p = result.party;
+    if (p.includes("自民")) result.partyCategory = "自民";
+    else if (p.includes("立憲")) result.partyCategory = "立憲";
+    else if (p.includes("公明")) result.partyCategory = "公明";
+    else if (p.includes("維新")) result.partyCategory = "維新";
+    else if (p.includes("共産")) result.partyCategory = "共産";
+    else if (p.includes("国民")) result.partyCategory = "国民";
+    else if (p.includes("れいわ")) result.partyCategory = "れいわ";
+    else if (p.includes("社民")) result.partyCategory = "社民";
+    else if (p.includes("チームみらい")) result.partyCategory = "チームみらい";
+    else if (p.includes("無所属")) result.partyCategory = "無所属";
+    else result.partyCategory = "その他";
+    if (!detected.includes("政党カテゴリ")) detected.push("政党カテゴリ");
+  }
+
+  // 5. 議会種別 (chamber)
+  const chamberMatch = text.match(/(?:議会種別|議会|chamber)\s*[:：]?\s*(衆議院|参議院|地方議会)/i);
+  if (chamberMatch) {
+    result.chamber = chamberMatch[1] as any;
+    if (!detected.includes("議会種別")) detected.push("議会種別");
+  } else {
+    if (text.includes("衆議院") || text.includes("衆院")) {
+      result.chamber = "衆議院";
+      if (!detected.includes("議会種別")) detected.push("議会種別");
+    } else if (text.includes("参議院") || text.includes("参院")) {
+      result.chamber = "参議院";
+      if (!detected.includes("議会種別")) detected.push("議会種別");
+    } else if (/(?:市議|県議|道議|府議|町議|村議|区議|市会|県会|都議|地方議会)/.test(text)) {
+      result.chamber = "地方議会";
+      if (!detected.includes("議会種別")) detected.push("議会種別");
+    }
+  }
+
+  // 6. 肩書・選挙区
+  const titleMatch = text.match(/(?:肩書・選挙区|肩書|役職|選挙区|title)\s*[:：]?\s*([^\n]+)/i);
+  if (titleMatch && titleMatch[1].trim()) {
+    result.title = titleMatch[1].trim();
+    if (!detected.includes("肩書")) detected.push("肩書");
+  } else {
+    // 例: チームみらい・衆議院議員（比例九州沖縄）
+    const autoTitleMatch = text.match(
+      /([^\n]+・(?:衆議院議員|参議院議員|県議会議員|市議会議員|区議会議員|都議会議員)[^\n]*)/
+    );
+    if (autoTitleMatch && !result.title) {
+      result.title = autoTitleMatch[1].trim();
+      if (!detected.includes("肩書")) detected.push("肩書");
+    }
+  }
+
+  // 7. 区分テキスト（divisionText: 例 国会｜国会（衆議院） または 福岡県・北九州市｜北九州市議会）
+  const divMatch =
+    text.match(/(?:区分テキスト|区分|divisionText)\s*[:：]?\s*([^\n]+)/i) ||
+    text.match(/([^\n]+｜[^\n]+)/);
+  if (divMatch && divMatch[1].trim()) {
+    result.divisionText = divMatch[1].trim();
+    if (!detected.includes("区分")) detected.push("区分");
+  } else if (result.chamber === "衆議院") {
+    result.divisionText = "国会｜国会（衆議院）";
+  } else if (result.chamber === "参議院") {
+    result.divisionText = "国会｜国会（参議院）";
+  }
+
+  // 8. 都道府県 (prefecture)
+  const prefMatch = text.match(/(?:都道府県|地域|自治体|prefecture)\s*[:：]?\s*([^\n]+)/i);
+  if (prefMatch && prefMatch[1].trim()) {
+    const prefVal = prefMatch[1].trim();
+    result.prefecture = prefVal;
+    result.region = prefVal;
+    if (!detected.includes("都道府県")) detected.push("都道府県");
+  } else {
+    let foundPref = "";
+    for (const p of PREFECTURES_LIST) {
+      if (text.includes(p)) {
+        foundPref = p;
+        break;
+      }
+    }
+    if (foundPref) {
+      result.prefecture = foundPref;
+      result.region = foundPref;
+      if (!detected.includes("都道府県")) detected.push("都道府県");
+    } else if (result.chamber === "衆議院" || result.chamber === "参議院") {
+      result.prefecture = "国会";
+      result.region = "国会";
+      if (!detected.includes("都道府県")) detected.push("都道府県");
+    }
+  }
+
+  // 9. 質問日 & 質問年
+  const dateMatch =
+    text.match(/(?:質問日|質疑日|日付|date)\s*[:：]?\s*([^\n]+)/i) ||
+    text.match(/(\d{4}年\s*\d{1,2}月\s*\d{1,2}日|\d{4}年)/);
+  if (dateMatch && dateMatch[1].trim()) {
+    result.questionDate = dateMatch[1].trim();
+    if (!detected.includes("質問日")) detected.push("質問日");
+    const yearMatch = result.questionDate.match(/(\d{4})/);
+    if (yearMatch) {
+      result.questionYear = parseInt(yearMatch[1]);
+      if (!detected.includes("質問年")) detected.push("質問年");
+    }
+  } else {
+    const anyYearMatch = text.match(/(?:20\d\d|19\d\d)年?/);
+    if (anyYearMatch) {
+      const y = parseInt(anyYearMatch[0]);
+      result.questionYear = y;
+      if (!result.questionDate) result.questionDate = `${y}年`;
+      if (!detected.includes("質問年")) detected.push("質問年");
+    }
+  }
+
+  // 10. テーマ（themes）
+  const themesFound: ("早産児支援" | "母乳バンク" | "付き添い入院")[] = [];
+  const themeMatch = text.match(/(?:テーマ|分野|タグ)\s*[:：]?\s*([^\n]+)/i);
+  const themeSearchTarget = (themeMatch ? themeMatch[1] : "") + " " + text;
+
+  if (/(?:早産児支援|早産児|低出生体重児|リトルベビー|就学猶予|修正月齢)/.test(themeSearchTarget)) {
+    themesFound.push("早産児支援");
+  }
+  if (/(?:母乳バンク|ドナーミルク|搾乳)/.test(themeSearchTarget)) {
+    themesFound.push("母乳バンク");
+  }
+  if (/(?:付き添い入院|付き添い|付添|ファミリーハウス|宿泊費|簡易ベッド)/.test(themeSearchTarget)) {
+    themesFound.push("付き添い入院");
+  }
+  if (themesFound.length > 0) {
+    result.themes = themesFound;
+    if (!detected.includes("テーマ")) detected.push("テーマ");
+  }
+
+  // 11. 出典名 & 出典URL
+  const srcTitleMatch = text.match(/(?:出典名?|情報源|参照|ソース|出典タイトル)\s*[:：]?\s*([^\n]+)/i);
+  if (srcTitleMatch && srcTitleMatch[1].trim()) {
+    const val = srcTitleMatch[1].trim();
+    if (!val.startsWith("http")) {
+      result.sourceTitle = val;
+      if (!detected.includes("出典名")) detected.push("出典名");
+    }
+  }
+
+  // 12. URLs（X紹介ポスト vs 出典URL）
+  const allUrls = text.match(/https?:\/\/[^\s"'<>）\)]+/g) || [];
+  for (const u of allUrls) {
+    if (u.includes("x.com/") || u.includes("twitter.com/")) {
+      result.xPostUrl = u;
+      if (!detected.includes("XポストURL")) detected.push("XポストURL");
+    } else if (!result.sourceUrl) {
+      result.sourceUrl = u;
+      if (!detected.includes("出典URL")) detected.push("出典URL");
+    }
+  }
+
+  // 13. 概要 / 紹介文
+  const summaryMatch = text.match(
+    /(?:概要|紹介文|本文|質疑概要|要約|内容|発言要旨)\s*[:：]?\s*([\s\S]*?)(?=(?:出典|URL|Xポスト|xPost|https?:\/\/|紹介カード|$))/i
+  );
+  if (summaryMatch && summaryMatch[1].trim()) {
+    const s = summaryMatch[1].trim();
+    if (s.length >= 8) {
+      result.summary = s;
+      if (!detected.includes("概要")) detected.push("概要");
+    }
+  }
+
+  return { result, detected };
+}
+
 export default function AdminPage() {
   // ── 認証ステート ──
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -61,6 +346,8 @@ export default function AdminPage() {
   const [isPoliticianModalOpen, setIsPoliticianModalOpen] = useState(false);
   const [editingPolitician, setEditingPolitician] = useState<Partial<Politician> | null>(null);
   const [isSubmittingPolitician, setIsSubmittingPolitician] = useState(false);
+  const [rawTextToParse, setRawTextToParse] = useState("");
+  const [parseFeedback, setParseFeedback] = useState<string | null>(null);
 
   // ── 制度モーダル（追加／編集） ──
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
@@ -157,6 +444,8 @@ export default function AdminPage() {
   // ── 議員データ編集・登録ハンドラ ──
   function openNewPoliticianModal() {
     const nextNum = (politicians.length + 1).toString().padStart(2, "0");
+    setRawTextToParse("");
+    setParseFeedback(null);
     setEditingPolitician({
       id: nextNum,
       cardNo: `紹介カード ${nextNum}`,
@@ -181,8 +470,29 @@ export default function AdminPage() {
   }
 
   function openEditPoliticianModal(p: Politician) {
+    setRawTextToParse("");
+    setParseFeedback(null);
     setEditingPolitician({ ...p });
     setIsPoliticianModalOpen(true);
+  }
+
+  function handleAutoParsePolitician() {
+    if (!rawTextToParse.trim()) {
+      alert("解析するテキストを貼り付けてください。");
+      return;
+    }
+    const { result, detected } = parsePoliticianFromText(
+      rawTextToParse,
+      editingPolitician || {}
+    );
+    setEditingPolitician(result);
+    if (detected.length > 0) {
+      setParseFeedback(
+        `【${result.name || "解析完了"}】${detected.length}項目（${detected.join("、")}）を自動反映しました！`
+      );
+    } else {
+      setParseFeedback("テキストを解析しましたが、該当する項目が見つかりませんでした。");
+    }
   }
 
   async function handleSavePolitician(e: React.FormEvent) {
@@ -896,6 +1206,65 @@ export default function AdminPage() {
               >
                 ✕
               </button>
+            </div>
+
+            {/* ── テキストから一括自動入力エリア ── */}
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-sky-50/60 border border-emerald-200/80 shadow-xs">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#217559] text-white text-xs shadow-xs">
+                    ✨
+                  </span>
+                  <span className="font-bold text-xs sm:text-sm text-[#18533f]">
+                    テキストから一括自動入力
+                  </span>
+                </div>
+                <span className="text-[11px] text-emerald-700/80 bg-white/70 px-2 py-0.5 rounded-full border border-emerald-100">
+                  Muse / 議会テキスト対応
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-600 mb-2.5 leading-relaxed">
+                原稿やメモ、Museで作成したテキストをそのまま貼り付けて「自動入力する」を押すと、氏名・ふりがな・政党・質問日・テーマ・概要などを各フィールドへ自動で振り分けます。
+              </p>
+              <textarea
+                rows={3}
+                value={rawTextToParse}
+                onChange={(e) => setRawTextToParse(e.target.value)}
+                placeholder="ここにテキストを貼り付け（例: 紹介カード 29 / 氏名: 山田太郎 (やまだ たろう) / 政党: 立憲民主党 / 質問日: 2026年3月9日 / テーマ: 早産児支援 / 概要: ... / X: https://x.com/...）"
+                className="w-full px-3 py-2 text-xs bg-white border border-emerald-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#288365]/30 text-slate-700 placeholder-slate-400 leading-relaxed font-sans"
+              />
+              <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAutoParsePolitician}
+                    className="px-3.5 py-1.5 bg-[#217559] hover:bg-[#18533f] text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>✨ 自動入力する</span>
+                  </button>
+                  {rawTextToParse && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRawTextToParse("");
+                        setParseFeedback(null);
+                      }}
+                      className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+
+                {parseFeedback && (
+                  <div className="text-[11px] font-medium text-emerald-800 bg-white/95 border border-emerald-200 px-3 py-1 rounded-lg flex items-center gap-1.5 shadow-2xs">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>{parseFeedback}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <form onSubmit={handleSavePolitician} className="space-y-4 text-xs sm:text-sm">
