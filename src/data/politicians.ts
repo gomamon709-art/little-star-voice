@@ -661,7 +661,8 @@ export const YEARS = [
 ];
 
 export const SORT_OPTIONS = [
-  { value: "card_asc", label: "紹介カード番号順（01〜28）" },
+  { value: "card_desc", label: "紹介カード番号：新しい順（降順）" },
+  { value: "card_asc", label: "紹介カード番号：古い順（昇順）" },
   { value: "date_desc", label: "質問日：新しい順" },
   { value: "date_asc", label: "質問日：古い順" },
   { value: "name_asc", label: "議員名（五十音順）" }

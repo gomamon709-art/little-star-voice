@@ -35,7 +35,7 @@ export function FilterAccordion({
     filters.party !== "すべて" ||
     filters.year !== "すべて" ||
     filters.search.trim() !== "" ||
-    filters.sort !== "date_desc";
+    filters.sort !== "card_desc";
 
   const handleReset = () => {
     onChange({
@@ -44,7 +44,7 @@ export function FilterAccordion({
       party: "すべて",
       year: "すべて",
       search: "",
-      sort: "date_desc",
+      sort: "card_desc",
     });
   };
 

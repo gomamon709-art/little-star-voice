@@ -16,6 +16,7 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
   const [politicians, setPoliticians] = useState<Politician[]>(initialPoliticians);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedPolitician, setSelectedPolitician] = useState<Politician | null>(null);
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
   const [filters, setFilters] = useState<FilterState>({
     region: "すべて",
@@ -23,7 +24,7 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
     party: "すべて",
     year: "すべて",
     search: "",
-    sort: "card_asc",
+    sort: "card_desc",
   });
 
   // クライアント側でも最新データを同期
@@ -89,27 +90,11 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
         return true;
       })
       .sort((a, b) => {
-        if (filters.sort === "card_asc") {
-          return parseInt(a.id, 10) - parseInt(b.id, 10);
-        }
-        if (filters.sort === "date_desc") {
-          if (b.questionYear !== a.questionYear) {
-            return b.questionYear - a.questionYear;
-          }
-          return b.questionDate.localeCompare(a.questionDate, "ja");
-        }
-        if (filters.sort === "date_asc") {
-          if (a.questionYear !== b.questionYear) {
-            return a.questionYear - b.questionYear;
-          }
-          return a.questionDate.localeCompare(b.questionDate, "ja");
-        }
-        if (filters.sort === "name_asc") {
-          return (a.kana || a.name).localeCompare(b.kana || b.name, "ja");
-        }
-        return 0;
+        return sortOrder === "desc"
+          ? Number(b.id) - Number(a.id)
+          : Number(a.id) - Number(b.id);
       });
-  }, [politicians, filters]);
+  }, [politicians, filters, sortOrder]);
 
   return (
     <div className="min-h-screen relative text-slate-800 pb-20 selection:bg-pink-200 selection:text-purple-900 flex flex-col items-center">
@@ -142,7 +127,7 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
 
         {/* Politician List Section */}
         <main className="w-full max-w-5xl mx-auto px-4 sm:px-6">
-          <div className="flex flex-row items-baseline justify-between gap-4 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
                 議員さん一覧
@@ -152,8 +137,36 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
               </p>
             </div>
 
-            <div className="text-xs text-slate-500 font-normal shrink-0">
-              {filteredPoliticians.length}人を表示中（全{politicians.length}人）
+            <div className="flex items-center justify-between sm:justify-end gap-3 flex-wrap">
+              <span className="text-xs text-slate-500 font-normal">
+                {filteredPoliticians.length}人を表示中（全{politicians.length}人）
+              </span>
+
+              {/* 並び順切り替えボタン */}
+              <button
+                type="button"
+                onClick={() => setSortOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
+                className="px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-white border border-emerald-200/90 hover:border-emerald-300 text-xs font-semibold text-[#18533f] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title={sortOrder === "desc" ? "クリックで番号順（01〜）に切り替え" : "クリックで新しい順に切り替え"}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#288365]" />
+                <span>{sortOrder === "desc" ? "新しい順" : "番号順（01〜）"}</span>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  className="text-[#288365]"
+                >
+                  {sortOrder === "desc" ? (
+                    <path d="M12 5v14M19 12l-7 7-7-7" />
+                  ) : (
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  )}
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -174,16 +187,17 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
               </p>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setFilters({
                     region: "すべて",
                     theme: "すべて",
                     party: "すべて",
                     year: "すべて",
                     search: "",
-                    sort: "card_asc",
-                  })
-                }
+                    sort: "card_desc",
+                  });
+                  setSortOrder("desc");
+                }}
                 className="px-4 py-1.5 rounded-full bg-[#8370AF] text-white text-xs font-semibold cursor-pointer"
               >
                 条件をリセット
