@@ -344,6 +344,8 @@ export default function AdminPage() {
 
   // ── 議員モーダル（追加／編集） ──
   const [isPoliticianModalOpen, setIsPoliticianModalOpen] = useState(false);
+  const [isNewPoliticianMode, setIsNewPoliticianMode] = useState(false);
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState(false);
   const [editingPolitician, setEditingPolitician] = useState<Partial<Politician> | null>(null);
   const [isSubmittingPolitician, setIsSubmittingPolitician] = useState(false);
   const [rawTextToParse, setRawTextToParse] = useState("");
@@ -362,6 +364,35 @@ export default function AdminPage() {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // ── 新規登録モーダル時の下書き自動保存 ──
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isPoliticianModalOpen && isNewPoliticianMode && editingPolitician) {
+      try {
+        const hasInput =
+          rawTextToParse.trim() !== "" ||
+          Boolean(editingPolitician.name?.trim()) ||
+          Boolean(editingPolitician.kana?.trim()) ||
+          Boolean(editingPolitician.party?.trim()) ||
+          Boolean(editingPolitician.summary?.trim()) ||
+          Boolean(editingPolitician.title?.trim()) ||
+          Boolean(editingPolitician.sourceUrl?.trim()) ||
+          Boolean(editingPolitician.xPostUrl?.trim());
+
+        if (hasInput) {
+          const payload = {
+            politician: editingPolitician,
+            rawText: rawTextToParse,
+            updatedAt: Date.now(),
+          };
+          localStorage.setItem("lsv_admin_politician_draft", JSON.stringify(payload));
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, [isPoliticianModalOpen, isNewPoliticianMode, editingPolitician, rawTextToParse]);
 
   async function checkAuth() {
     try {
@@ -443,9 +474,78 @@ export default function AdminPage() {
 
   // ── 議員データ編集・登録ハンドラ ──
   function openNewPoliticianModal() {
+    setIsNewPoliticianMode(true);
+    setParseFeedback(null);
+
+    // localStorageからの下書き復元チェック
+    let restored = false;
+    if (typeof window !== "undefined") {
+      try {
+        const rawSaved = localStorage.getItem("lsv_admin_politician_draft");
+        if (rawSaved) {
+          const saved = JSON.parse(rawSaved);
+          if (saved && saved.politician) {
+            setEditingPolitician(saved.politician);
+            setRawTextToParse(saved.rawText || "");
+            setDraftRestoredNotice(true);
+            restored = true;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!restored) {
+      const nextNum = (politicians.length + 1).toString().padStart(2, "0");
+      setRawTextToParse("");
+      setDraftRestoredNotice(false);
+      setEditingPolitician({
+        id: nextNum,
+        cardNo: `紹介カード ${nextNum}`,
+        name: "",
+        kana: "",
+        party: "",
+        partyCategory: "自民",
+        chamber: "衆議院",
+        title: "",
+        divisionText: "国会｜国会（衆議院）",
+        prefecture: "国会",
+        region: "国会",
+        questionDate: new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" }),
+        questionYear: new Date().getFullYear(),
+        themes: ["早産児支援"],
+        summary: "",
+        sourceTitle: "",
+        sourceUrl: "",
+        xPostUrl: "",
+      });
+    }
+
+    setIsPoliticianModalOpen(true);
+  }
+
+  function openEditPoliticianModal(p: Politician) {
+    setIsNewPoliticianMode(false);
+    setDraftRestoredNotice(false);
+    setRawTextToParse("");
+    setParseFeedback(null);
+    setEditingPolitician({ ...p });
+    setIsPoliticianModalOpen(true);
+  }
+
+  function handleClearDraft() {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("lsv_admin_politician_draft");
+      } catch {
+        // ignore
+      }
+    }
     const nextNum = (politicians.length + 1).toString().padStart(2, "0");
     setRawTextToParse("");
     setParseFeedback(null);
+    setDraftRestoredNotice(false);
     setEditingPolitician({
       id: nextNum,
       cardNo: `紹介カード ${nextNum}`,
@@ -466,14 +566,6 @@ export default function AdminPage() {
       sourceUrl: "",
       xPostUrl: "",
     });
-    setIsPoliticianModalOpen(true);
-  }
-
-  function openEditPoliticianModal(p: Politician) {
-    setRawTextToParse("");
-    setParseFeedback(null);
-    setEditingPolitician({ ...p });
-    setIsPoliticianModalOpen(true);
   }
 
   function handleAutoParsePolitician() {
@@ -520,6 +612,15 @@ export default function AdminPage() {
         type: "success",
         text: `議員データ「${editingPolitician.name}」を${isEdit ? "更新" : "登録"}しました！`,
       });
+      // 新規登録成功時は下書きを自動削除
+      if (!isEdit && typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("lsv_admin_politician_draft");
+        } catch {
+          // ignore
+        }
+      }
+      setDraftRestoredNotice(false);
       setIsPoliticianModalOpen(false);
       setEditingPolitician(null);
       fetchAllData();
@@ -1195,11 +1296,19 @@ export default function AdminPage() {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-3xl w-full my-8 p-6 sm:p-8 shadow-2xl border border-emerald-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-800">
-                {politicians.some((p) => p.id === editingPolitician.id)
-                  ? `議員データの編集 (ID: ${editingPolitician.id})`
-                  : "新しい議員データの登録"}
-              </h2>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-lg font-bold text-slate-800">
+                  {isNewPoliticianMode
+                    ? "新しい議員データの登録"
+                    : `議員データの編集 (ID: ${editingPolitician.id})`}
+                </h2>
+                {isNewPoliticianMode && draftRestoredNotice && (
+                  <span className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200/90 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    下書きを復元しました
+                  </span>
+                )}
+              </div>
               <button
                 onClick={() => setIsPoliticianModalOpen(false)}
                 className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center font-bold"
@@ -1561,28 +1670,46 @@ export default function AdminPage() {
                 />
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsPoliticianModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition"
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingPolitician}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#217559] to-[#2ca880] text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isSubmittingPolitician ? (
-                    <>
-                      <span className="inline-block animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                      保存中...
-                    </>
-                  ) : (
-                    "保存する"
+              <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  {isNewPoliticianMode && (
+                    <button
+                      type="button"
+                      onClick={handleClearDraft}
+                      className="text-xs text-slate-400 hover:text-rose-600 transition cursor-pointer flex items-center gap-1.5 py-1"
+                      title="保存されている下書きを破棄して入力欄を初期状態に戻します"
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      <span>下書きをクリア</span>
+                    </button>
                   )}
-                </button>
+                </div>
+
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsPoliticianModalOpen(false)}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition cursor-pointer"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPolitician}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#217559] to-[#2ca880] text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    {isSubmittingPolitician ? (
+                      <>
+                        <span className="inline-block animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                        保存中...
+                      </>
+                    ) : (
+                      "保存する"
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
