@@ -20,14 +20,16 @@ const POLICY_THEME_OPTIONS: PolicyTheme[] = [
 ];
 
 const PARTY_CATEGORY_OPTIONS = [
-  "自民",
-  "立憲",
-  "公明",
-  "維新",
-  "共産",
-  "国民",
-  "れいわ",
-  "社民",
+  "自民党",
+  "公明党",
+  "立憲民主党",
+  "日本維新の会",
+  "日本共産党",
+  "国民民主党",
+  "れいわ新選組",
+  "社会民主党",
+  "参政党",
+  "都民ファーストの会",
   "チームみらい",
   "無所属",
   "その他",
@@ -159,14 +161,16 @@ function parsePoliticianFromText(
   // 政党カテゴリ自動判定
   if (result.party) {
     const p = result.party;
-    if (p.includes("自民")) result.partyCategory = "自民";
-    else if (p.includes("立憲")) result.partyCategory = "立憲";
-    else if (p.includes("公明")) result.partyCategory = "公明";
-    else if (p.includes("維新")) result.partyCategory = "維新";
-    else if (p.includes("共産")) result.partyCategory = "共産";
-    else if (p.includes("国民")) result.partyCategory = "国民";
-    else if (p.includes("れいわ")) result.partyCategory = "れいわ";
-    else if (p.includes("社民")) result.partyCategory = "社民";
+    if (p.includes("自民")) result.partyCategory = "自民党";
+    else if (p.includes("公明")) result.partyCategory = "公明党";
+    else if (p.includes("立憲")) result.partyCategory = "立憲民主党";
+    else if (p.includes("維新")) result.partyCategory = "日本維新の会";
+    else if (p.includes("共産")) result.partyCategory = "日本共産党";
+    else if (p.includes("国民")) result.partyCategory = "国民民主党";
+    else if (p.includes("れいわ")) result.partyCategory = "れいわ新選組";
+    else if (p.includes("社民")) result.partyCategory = "社会民主党";
+    else if (p.includes("参政")) result.partyCategory = "参政党";
+    else if (p.includes("都民ファースト")) result.partyCategory = "都民ファーストの会";
     else if (p.includes("チームみらい")) result.partyCategory = "チームみらい";
     else if (p.includes("無所属")) result.partyCategory = "無所属";
     else result.partyCategory = "その他";
@@ -506,7 +510,7 @@ export default function AdminPage() {
         name: "",
         kana: "",
         party: "",
-        partyCategory: "自民",
+        partyCategory: "自民党",
         chamber: "衆議院",
         title: "",
         divisionText: "国会｜国会（衆議院）",
@@ -552,7 +556,7 @@ export default function AdminPage() {
       name: "",
       kana: "",
       party: "",
-      partyCategory: "自民",
+      partyCategory: "自民党",
       chamber: "衆議院",
       title: "",
       divisionText: "国会｜国会（衆議院）",

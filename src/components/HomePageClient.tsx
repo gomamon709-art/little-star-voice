@@ -12,6 +12,81 @@ interface HomePageClientProps {
   initialPoliticians: Politician[];
 }
 
+// 政党フィルター判定（partyCategoryとpartyの両方に対応）
+function matchesPartyFilter(p: Politician, filterParty: string): boolean {
+  if (filterParty === "すべて") return true;
+
+  const cat = p.partyCategory || "";
+  const party = p.party || "";
+
+  // 完全一致
+  if (cat === filterParty || party === filterParty) {
+    return true;
+  }
+
+  // 「公明党」フィルター：partyCategoryが「公明党」または「公明」、あるいはparty名に「公明」が含まれる場合
+  if (filterParty === "公明党") {
+    return cat === "公明党" || cat === "公明" || party.includes("公明");
+  }
+
+  // 「自民党」フィルター：自民党/自民/自由民主党
+  if (filterParty === "自民党") {
+    return cat === "自民党" || cat === "自民" || party.includes("自民");
+  }
+
+  // 「立憲民主党」フィルター：立憲民主党/立憲
+  if (filterParty === "立憲民主党") {
+    return cat === "立憲民主党" || cat === "立憲" || party.includes("立憲");
+  }
+
+  // 「日本維新の会」フィルター：日本維新の会/維新
+  if (filterParty === "日本維新の会") {
+    return cat === "日本維新の会" || cat === "維新" || party.includes("維新");
+  }
+
+  // 「日本共産党」フィルター：日本共産党/共産
+  if (filterParty === "日本共産党") {
+    return cat === "日本共産党" || cat === "共産" || party.includes("共産");
+  }
+
+  // 「国民民主党」フィルター：国民民主党/国民
+  if (filterParty === "国民民主党") {
+    return cat === "国民民主党" || cat === "国民" || party.includes("国民");
+  }
+
+  // 「れいわ新選組」フィルター：れいわ新選組/れいわ
+  if (filterParty === "れいわ新選組") {
+    return cat === "れいわ新選組" || cat === "れいわ" || party.includes("れいわ");
+  }
+
+  // 「社会民主党」フィルター：社会民主党/社民
+  if (filterParty === "社会民主党") {
+    return cat === "社会民主党" || cat === "社民" || party.includes("社民");
+  }
+
+  // 「参政党」フィルター：参政党/参政
+  if (filterParty === "参政党") {
+    return cat === "参政党" || cat === "参政" || party.includes("参政");
+  }
+
+  // 「都民ファーストの会」フィルター
+  if (filterParty === "都民ファーストの会") {
+    return cat === "都民ファーストの会" || cat.includes("都民ファースト") || party.includes("都民ファースト");
+  }
+
+  // 「チームみらい」フィルター
+  if (filterParty === "チームみらい") {
+    return cat === "チームみらい" || party.includes("チームみらい");
+  }
+
+  // 「無所属」フィルター
+  if (filterParty === "無所属") {
+    return cat === "無所属" || party.includes("無所属");
+  }
+
+  return cat.includes(filterParty) || party.includes(filterParty);
+}
+
 export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
   const [politicians, setPoliticians] = useState<Politician[]>(initialPoliticians);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -56,7 +131,7 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
           return false;
         }
         // 政党
-        if (filters.party !== "すべて" && p.partyCategory !== filters.party) {
+        if (!matchesPartyFilter(p, filters.party)) {
           return false;
         }
         // 年
