@@ -6,6 +6,7 @@ import { Header } from "@/components/Header";
 import { FilterAccordion, FilterState } from "@/components/FilterAccordion";
 import { PoliticianCard } from "@/components/PoliticianCard";
 import { PoliticianModal } from "@/components/PoliticianModal";
+import { JapanStarMap } from "@/components/JapanStarMap";
 import { getPoliticians } from "@/lib/supabase";
 
 interface HomePageClientProps {
@@ -120,8 +121,12 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
     return politicians
       .filter((p) => {
         // 地域
-        if (filters.region !== "すべて" && p.region !== filters.region) {
-          return false;
+        if (filters.region !== "すべて") {
+          const matchRegion =
+            p.region === filters.region || p.prefecture === filters.region;
+          if (!matchRegion) {
+            return false;
+          }
         }
         // テーマ
         if (
@@ -190,6 +195,25 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
         {/* Header Section */}
         <Header onOpenFilter={() => setIsFilterOpen(true)} />
 
+        {/* 日本星灯りマップ */}
+        <JapanStarMap
+          politicians={politicians}
+          selectedRegion={filters.region}
+          onSelectRegion={(region) => {
+            const nextRegion = filters.region === region ? "すべて" : region;
+            setFilters((prev) => ({
+              ...prev,
+              region: nextRegion,
+            }));
+            if (nextRegion !== "すべて") {
+              const el = document.getElementById("politician-list");
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }
+          }}
+        />
+
         {/* Filter Accordion */}
         <FilterAccordion
           filters={filters}
@@ -201,7 +225,7 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
         />
 
         {/* Politician List Section */}
-        <main className="w-full max-w-5xl mx-auto px-4 sm:px-6">
+        <main id="politician-list" className="w-full max-w-5xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">

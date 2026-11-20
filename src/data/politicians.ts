@@ -622,14 +622,10 @@ const PREFECTURE_ORDER = [
   "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
 ];
 
-const registeredPrefectures = PREFECTURE_ORDER.filter((pref) =>
-  POLITICIANS_DATA.some((p) => p.chamber === "地方議会" && p.prefecture === pref)
-);
-
 export const REGIONS = [
   "すべて",
   "国会",
-  ...registeredPrefectures
+  ...PREFECTURE_ORDER
 ];
 
 export const THEMES = [
