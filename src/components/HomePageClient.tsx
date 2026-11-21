@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { Politician } from "@/data/politicians";
 import { Header } from "@/components/Header";
 import { FilterAccordion, FilterState } from "@/components/FilterAccordion";
@@ -340,6 +341,20 @@ export function HomePageClient({ initialPoliticians }: HomePageClientProps) {
               </div>
             </div>
           </section>
+
+          {/* Footer Section */}
+          <footer className="mt-6 mb-12 text-center">
+            <Link
+              href="/request"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/90 hover:bg-white text-xs font-medium text-slate-600 hover:text-purple-700 border border-purple-200/80 shadow-2xs hover:shadow-xs transition-all duration-200"
+            >
+              <span>✉️</span>
+              <span>情報の訂正・削除依頼 / 新しい発言の情報提供</span>
+            </Link>
+            <p className="text-[11px] text-slate-400 mt-4">
+              © {new Date().getFullYear()} Little Star Voice. All rights reserved.
+            </p>
+          </footer>
         </main>
       </div>
 

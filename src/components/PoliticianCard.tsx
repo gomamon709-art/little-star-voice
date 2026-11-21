@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Politician } from "@/data/politicians";
 
 interface PoliticianCardProps {
@@ -75,21 +76,35 @@ export function PoliticianCard({ politician, onSelect }: PoliticianCardProps) {
         </p>
       </div>
 
-      {/* Source Link if present */}
-      {politician.sourceUrl && (
-        <div className="pt-2 border-t border-slate-100/80 text-[11px] text-slate-500 flex items-center justify-between">
-          <span>出典：</span>
-          <a
-            href={politician.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="text-purple-600 hover:text-purple-800 hover:underline inline-flex items-center gap-1 font-medium"
-          >
-            {politician.sourceTitle ?? "議事録を開く"} ↗
-          </a>
+      {/* Footer Area: Source & Correction Link */}
+      <div className="pt-2 border-t border-slate-100/80 text-[11px] text-slate-500 flex items-center justify-between gap-2 mt-auto">
+        <div className="truncate">
+          {politician.sourceUrl ? (
+            <a
+              href={politician.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-purple-600 hover:text-purple-800 hover:underline inline-flex items-center gap-1 font-medium truncate"
+            >
+              <span>出典：{politician.sourceTitle ?? "議事録を開く"}</span>
+              <span className="shrink-0">↗</span>
+            </a>
+          ) : (
+            <span className="text-[10px] text-slate-400">
+              {politician.questionDate ? `${politician.questionDate} 発言` : ""}
+            </span>
+          )}
         </div>
-      )}
+
+        <Link
+          href={`/request?target=${encodeURIComponent(`${politician.name}（紹介カード ${politician.id}）`)}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-[10px] text-slate-400 hover:text-slate-600 hover:underline shrink-0 transition-colors ml-auto"
+        >
+          情報の訂正・削除依頼
+        </Link>
+      </div>
     </article>
   );
 }
