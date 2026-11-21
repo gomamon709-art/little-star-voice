@@ -16,7 +16,7 @@ export function RequestFormClient() {
   const [senderRole, setSenderRole] = useState<SenderRole>("一般の閲覧者・当事者家族");
   const [content, setContent] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const [email, setEmail] = useState("");
+  const [contactUrl, setContactUrl] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -53,7 +53,7 @@ export function RequestFormClient() {
           senderRole,
           content,
           sourceUrl,
-          email,
+          contactUrl,
         }),
       });
 
@@ -97,6 +97,7 @@ export function RequestFormClient() {
               setIsSubmitted(false);
               setContent("");
               setSourceUrl("");
+              setContactUrl("");
             }}
             className="w-full sm:w-auto px-5 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs sm:text-sm transition-all"
           >
@@ -223,18 +224,21 @@ export function RequestFormClient() {
           />
         </div>
 
-        {/* 6. ご連絡先メールアドレス（任意） */}
+        {/* 6. 完了連絡を希望する場合の公開SNS・公式サイトURL（任意） */}
         <div>
           <label className="block font-bold text-slate-800 mb-1.5">
-            6. ご連絡先メールアドレス <span className="text-xs text-slate-400 font-normal">（任意）</span>
+            6. 完了連絡を希望する場合の公開SNS・公式サイトURL <span className="text-xs text-slate-400 font-normal">（任意）</span>
           </label>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="example@domain.com（確認や回答が必要な場合にご入力ください）"
-            className="w-full px-3.5 py-2.5 bg-slate-50/90 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:bg-white transition-all text-slate-800"
+            type="url"
+            value={contactUrl}
+            onChange={(e) => setContactUrl(e.target.value)}
+            placeholder="例：https://x.com/...（X・Instagramや公式サイトなど公開ページのURL）"
+            className="w-full px-3.5 py-2.5 bg-slate-50/90 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:bg-white transition-all text-slate-800 font-mono text-xs"
           />
+          <div className="mt-2.5 p-3 rounded-xl bg-purple-50/60 border border-purple-100 text-[11px] sm:text-xs text-slate-600 leading-relaxed">
+            ※個人情報保護のため、お名前やメールアドレス・電話番号などの個人情報は取得しておりません。完了連絡をご希望の場合は、公開されているSNSアカウントや公式サイトのURLをご記載ください（すべてのご依頼への個別返信はお約束いたしかねます）。
+          </div>
         </div>
 
         {/* 送信ボタン */}

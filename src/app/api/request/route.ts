@@ -4,7 +4,7 @@ import { getAdminSupabase } from "@/lib/supabase";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { requestType, targetPolitician, senderRole, content, sourceUrl, email } = body;
+    const { requestType, targetPolitician, senderRole, content, sourceUrl, contactUrl } = body;
 
     // バリデーション
     if (!requestType || !targetPolitician || !senderRole || !content) {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       sender_role: senderRole,
       content: content,
       source_url: sourceUrl || null,
-      email: email || null,
+      contact_url: contactUrl || null,
       status: "pending",
     };
 

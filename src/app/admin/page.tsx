@@ -5,6 +5,18 @@ import Link from "next/link";
 import { Politician } from "@/data/politicians";
 import { Policy, PolicyTheme } from "@/lib/policies-data";
 
+export interface CorrectionRequestItem {
+  id: string;
+  request_type: string;
+  target_politician: string;
+  sender_role: string;
+  content: string;
+  source_url?: string | null;
+  contact_url?: string | null;
+  status: "pending" | "resolved";
+  created_at: string;
+}
+
 type Tab = "politicians" | "policies";
 
 const THEME_OPTIONS: ("早産児支援" | "母乳バンク" | "付き添い入院")[] = [
@@ -339,6 +351,10 @@ export default function AdminPage() {
   const [currentTab, setCurrentTab] = useState<Tab>("politicians");
   const [politicians, setPoliticians] = useState<Politician[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const [correctionRequests, setCorrectionRequests] = useState<CorrectionRequestItem[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
+  const [isRequestsSectionOpen, setIsRequestsSectionOpen] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -361,7 +377,7 @@ export default function AdminPage() {
   const [isSubmittingPolicy, setIsSubmittingPolicy] = useState(false);
 
   // ── 削除確認ダイアログ ──
-  const [deletingItem, setDeletingItem] = useState<{ type: "politician" | "policy"; id: string; name: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: "politician" | "policy" | "request"; id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // 認証チェック
@@ -456,9 +472,10 @@ export default function AdminPage() {
     setIsLoadingData(true);
     setMessage(null);
     try {
-      const [resPol, resPlc] = await Promise.all([
+      const [resPol, resPlc, resReq] = await Promise.all([
         fetch("/api/admin/politicians"),
         fetch("/api/admin/policies"),
+        fetch("/api/admin/requests"),
       ]);
 
       if (resPol.ok) {
@@ -469,10 +486,42 @@ export default function AdminPage() {
         const dataPlc = await resPlc.json();
         setPolicies(dataPlc.policies || []);
       }
+      if (resReq.ok) {
+        const dataReq = await resReq.json();
+        setCorrectionRequests(dataReq.requests || []);
+      }
     } catch (err: any) {
       setMessage({ type: "error", text: "データ取得に失敗しました: " + (err?.message || "通信エラー") });
     } finally {
       setIsLoadingData(false);
+    }
+  }
+
+  // ── 訂正・削除依頼ステータス切り替えハンドラ ──
+  async function handleToggleRequestStatus(item: CorrectionRequestItem) {
+    const nextStatus = item.status === "resolved" ? "pending" : "resolved";
+    setUpdatingRequestId(item.id);
+    try {
+      const res = await fetch("/api/admin/requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, status: nextStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "ステータス更新に失敗しました。");
+      }
+      setCorrectionRequests((prev) =>
+        prev.map((r) => (r.id === item.id ? { ...r, status: nextStatus } : r))
+      );
+      setMessage({
+        type: "success",
+        text: `依頼（${item.target_politician}）を「${nextStatus === "resolved" ? "対応済み" : "未対応"}」に変更しました。`,
+      });
+    } catch (err: any) {
+      alert("エラー: " + err.message);
+    } finally {
+      setUpdatingRequestId(null);
     }
   }
 
@@ -699,7 +748,9 @@ export default function AdminPage() {
       const endpoint =
         deletingItem.type === "politician"
           ? `/api/admin/politicians?id=${encodeURIComponent(deletingItem.id)}`
-          : `/api/admin/policies?id=${encodeURIComponent(deletingItem.id)}`;
+          : deletingItem.type === "policy"
+            ? `/api/admin/policies?id=${encodeURIComponent(deletingItem.id)}`
+            : `/api/admin/requests?id=${encodeURIComponent(deletingItem.id)}`;
 
       const res = await fetch(endpoint, { method: "DELETE" });
       const data = await res.json();
@@ -905,11 +956,10 @@ export default function AdminPage() {
         {/* 通知バナー */}
         {message && (
           <div
-            className={`mb-6 p-4 rounded-2xl border text-sm flex items-start justify-between gap-3 shadow-xs ${
-              message.type === "success"
+            className={`mb-6 p-4 rounded-2xl border text-sm flex items-start justify-between gap-3 shadow-xs ${message.type === "success"
                 ? "bg-emerald-50/90 border-emerald-200 text-emerald-800"
                 : "bg-rose-50/90 border-rose-200 text-rose-800"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2">
               {message.type === "success" ? (
@@ -935,6 +985,213 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── 📩 届いた訂正・削除依頼セクション ── */}
+        <section className="mb-8 bg-white rounded-3xl border border-purple-100/90 shadow-sm overflow-hidden">
+          {/* セクションヘッダー（開閉トグル可能） */}
+          <div
+            className="p-5 sm:p-6 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-white flex items-center justify-between cursor-pointer select-none"
+            onClick={() => setIsRequestsSectionOpen((prev) => !prev)}
+          >
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              <span className="text-xl">📩</span>
+              <h2 className="text-base sm:text-lg font-bold text-slate-800">
+                届いた訂正・削除依頼
+              </h2>
+              {/* 未対応バッジ */}
+              {correctionRequests.filter((r) => r.status === "pending").length > 0 ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-rose-500 text-white animate-pulse shadow-2xs">
+                  未対応 {correctionRequests.filter((r) => r.status === "pending").length}件
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                  未対応 0件
+                </span>
+              )}
+              <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                （全 {correctionRequests.length}件）
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-slate-400">
+              <span className="text-xs font-medium hidden sm:inline">
+                {isRequestsSectionOpen ? "折りたたむ" : "展開する"}
+              </span>
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={`transition-transform duration-200 ${isRequestsSectionOpen ? "rotate-180" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
+          </div>
+
+          {/* 依頼リスト本体 */}
+          {isRequestsSectionOpen && (
+            <div className="p-5 sm:p-6 border-t border-purple-100/70 bg-purple-50/20">
+              {correctionRequests.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs sm:text-sm">
+                  <p className="text-2xl mb-2">✨</p>
+                  現在、届いている訂正・削除依頼はありません。
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {correctionRequests.map((req) => {
+                    const isPending = req.status === "pending";
+                    const isUpdating = updatingRequestId === req.id;
+                    const formattedDate = req.created_at
+                      ? new Date(req.created_at).toLocaleString("ja-JP", {
+                        year: "numeric",
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                      : "日時不明";
+
+                    return (
+                      <div
+                        key={req.id}
+                        className={`rounded-2xl p-5 border transition-all ${isPending
+                            ? "bg-white border-rose-200/80 shadow-xs"
+                            : "bg-slate-50/70 border-slate-200 text-slate-600 opacity-90"
+                          }`}
+                      >
+                        {/* 上部ヘッダー（ステータス、種別、日時、アクションボタン） */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {/* ステータスバッジ */}
+                            {isPending ? (
+                              <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                                未対応
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                                ✓ 対応済み
+                              </span>
+                            )}
+
+                            {/* 依頼の種類 */}
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                              {req.request_type}
+                            </span>
+
+                            {/* 依頼者のお立場 */}
+                            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                              {req.sender_role}
+                            </span>
+
+                            {/* 送信日時 */}
+                            <span className="text-[11px] text-slate-400 ml-1">
+                              {formattedDate}
+                            </span>
+                          </div>
+
+                          {/* ボタンエリア */}
+                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                            {/* ステータストグルボタン */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRequestStatus(req)}
+                              disabled={isUpdating}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${isPending
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+                                  : "bg-slate-200 hover:bg-slate-300 text-slate-700"
+                                }`}
+                            >
+                              {isUpdating ? (
+                                <span className="inline-block animate-spin w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
+                              ) : (
+                                <span>{isPending ? "✓ 対応済みにする" : "↩ 未対応に戻す"}</span>
+                              )}
+                            </button>
+
+                            {/* 削除ボタン */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDeletingItem({
+                                  type: "request",
+                                  id: req.id,
+                                  name: `${req.request_type} - ${req.target_politician}`,
+                                })
+                              }
+                              className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition flex items-center gap-1 cursor-pointer"
+                              title="この依頼を削除"
+                            >
+                              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                              <span>削除</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 本文エリア */}
+                        <div className="pt-3.5 space-y-2.5 text-xs sm:text-sm">
+                          {/* 対象の議員名・カード番号 */}
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-slate-400 text-xs shrink-0 font-medium">対象：</span>
+                            <span className="font-bold text-slate-800">
+                              {req.target_politician}
+                            </span>
+                          </div>
+
+                          {/* 具体的な内容 */}
+                          <div>
+                            <span className="text-slate-400 text-xs block mb-1 font-medium">依頼内容：</span>
+                            <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/80 text-slate-700 whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
+                              {req.content}
+                            </div>
+                          </div>
+
+                          {/* 参考URL & メールアドレス */}
+                          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1 text-xs">
+                            {req.source_url && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-400 font-medium">参考URL：</span>
+                                <a
+                                  href={req.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-600 hover:text-purple-800 hover:underline break-all inline-flex items-center gap-1"
+                                >
+                                  <span>{req.source_url}</span>
+                                  <span>↗</span>
+                                </a>
+                              </div>
+                            )}
+
+                            {req.contact_url && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-400 font-medium">連絡希望URL：</span>
+                                <a
+                                  href={req.contact_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-emerald-700 hover:text-emerald-900 hover:underline break-all inline-flex items-center gap-1 font-mono"
+                                >
+                                  <span>{req.contact_url}</span>
+                                  <span>↗</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
         {/* タブ切り替えバー */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="inline-flex p-1 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
@@ -943,19 +1200,17 @@ export default function AdminPage() {
                 setCurrentTab("politicians");
                 setSelectedThemeFilter("all");
               }}
-              className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 ${
-                currentTab === "politicians"
+              className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 ${currentTab === "politicians"
                   ? "bg-gradient-to-r from-[#217559] to-[#288365] text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
-              }`}
+                }`}
             >
               <span>議員データ管理</span>
               <span
-                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                  currentTab === "politicians"
+                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${currentTab === "politicians"
                     ? "bg-white/20 text-white"
                     : "bg-slate-100 text-slate-600"
-                }`}
+                  }`}
               >
                 {politicians.length}件
               </span>
@@ -965,19 +1220,17 @@ export default function AdminPage() {
                 setCurrentTab("policies");
                 setSelectedThemeFilter("all");
               }}
-              className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 ${
-                currentTab === "policies"
+              className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition flex items-center gap-2 ${currentTab === "policies"
                   ? "bg-gradient-to-r from-[#217559] to-[#288365] text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
-              }`}
+                }`}
             >
               <span>制度紹介データ管理</span>
               <span
-                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                  currentTab === "policies"
+                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${currentTab === "policies"
                     ? "bg-white/20 text-white"
                     : "bg-slate-100 text-slate-600"
-                }`}
+                  }`}
               >
                 {policies.length}件
               </span>
@@ -1067,15 +1320,15 @@ export default function AdminPage() {
               <option value="all">すべてのテーマ</option>
               {currentTab === "politicians"
                 ? THEME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))
                 : POLICY_THEME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
             </select>
 
             {(searchQuery || selectedThemeFilter !== "all") && (
@@ -1581,11 +1834,10 @@ export default function AdminPage() {
                     return (
                       <label
                         key={theme}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
-                          checked
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${checked
                             ? "bg-emerald-50 border-emerald-300 text-emerald-800"
                             : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                        }`}
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -1912,7 +2164,11 @@ export default function AdminPage() {
             </div>
 
             <span className="inline-block text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full mb-3">
-              {deletingItem.type === "politician" ? "議員データの削除確認" : "制度データの削除確認"}
+              {deletingItem.type === "politician"
+                ? "議員データの削除確認"
+                : deletingItem.type === "policy"
+                  ? "制度データの削除確認"
+                  : "依頼データの削除確認"}
             </span>
 
             {/* 赤字・強調の確認メッセージ */}
