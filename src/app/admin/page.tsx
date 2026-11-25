@@ -340,6 +340,137 @@ function parsePoliticianFromText(
   return { result, detected };
 }
 
+// 続報用テキスト・URL一括解析関数
+function parseFollowUpFromText(
+  rawText: string,
+  explicitUrl?: string
+): { item: FollowUpItem; detected: string[] } {
+  const detected: string[] = [];
+  const text = rawText.trim();
+
+  let date = "";
+  let committee = "";
+  let summary = "";
+  let sourceUrl = explicitUrl?.trim() || "";
+  let sourceLabel = "";
+
+  // 1. JSON形式の解析試行
+  try {
+    const jsonCandidate = text.replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"');
+    const parsedObj = JSON.parse(jsonCandidate);
+    if (parsedObj && typeof parsedObj === "object") {
+      if (parsedObj.date) { date = String(parsedObj.date); detected.push("質問日"); }
+      if (parsedObj.committee) { committee = String(parsedObj.committee); detected.push("会議名"); }
+      if (parsedObj.summary) { summary = String(parsedObj.summary); detected.push("要約"); }
+      if (parsedObj.sourceUrl || parsedObj.source_url) {
+        sourceUrl = String(parsedObj.sourceUrl || parsedObj.source_url);
+        detected.push("出典URL");
+      }
+      if (parsedObj.sourceLabel || parsedObj.source_label) {
+        sourceLabel = String(parsedObj.sourceLabel || parsedObj.source_label);
+        detected.push("出典名");
+      }
+    }
+  } catch {
+    // 通常のテキストパースへ
+  }
+
+  // 2. URLの抽出（explicitUrlがなければテキスト内から抽出）
+  if (!sourceUrl) {
+    const urlMatch = text.match(/https?:\/\/[^\s"'<>）\)]+/);
+    if (urlMatch) {
+      sourceUrl = urlMatch[0];
+      detected.push("出典URL");
+    }
+  }
+
+  // 3. 質問日・開催日 (date)
+  if (!date) {
+    const dateMatch =
+      text.match(/(?:質問日|質疑日|開催日|発言日|日付|date)\s*[:：]?\s*([^\n]+)/i) ||
+      text.match(/(\d{4}年\s*\d{1,2}月\s*\d{1,2}日|\d{4}年\s*\d{1,2}月|\d{4}\/\d{1,2}\/\d{1,2})/);
+    if (dateMatch) {
+      date = dateMatch[1].trim();
+      detected.push("質問日");
+    } else {
+      date = new Date().toLocaleDateString("ja-JP", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    }
+  }
+
+  // 4. 会議名・委員会名 (committee)
+  if (!committee) {
+    const commMatch =
+      text.match(/(?:会議名?|委員会名?|委員会|議会名?|開催会議|会議|committee)\s*[:：]?\s*([^\n]+)/i) ||
+      text.match(/([^\n]*(?:衆議院|参議院|委員会|本会議|予算委員会|厚生労働委員会|特別委員会|定例会|臨時会|常任委員会)[^\n]*)/);
+    if (commMatch && commMatch[1].trim()) {
+      committee = commMatch[1].trim();
+      detected.push("会議名");
+    }
+  }
+
+  // 5. 出典名 (sourceLabel)
+  if (!sourceLabel) {
+    const srcTitleMatch = text.match(
+      /(?:出典名?|情報源|参照|ソース|出典タイトル|sourceLabel|source_label)\s*[:：]?\s*([^\n]+)/i
+    );
+    if (srcTitleMatch && srcTitleMatch[1].trim() && !srcTitleMatch[1].trim().startsWith("http")) {
+      sourceLabel = srcTitleMatch[1].trim();
+      detected.push("出典名");
+    } else if (sourceUrl) {
+      if (sourceUrl.includes("shugiin.go.jp")) sourceLabel = "衆議院 会議録";
+      else if (sourceUrl.includes("sangiin.go.jp")) sourceLabel = "参議院 会議録";
+      else if (sourceUrl.includes("note.com")) sourceLabel = "公式note";
+      else if (sourceUrl.includes("youtube.com") || sourceUrl.includes("youtu.be")) sourceLabel = "YouTube録画";
+      else sourceLabel = "公式会議録・情報出典";
+      if (!detected.includes("出典名")) detected.push("出典名");
+    }
+  }
+
+  // 6. 要約・内容テキスト (summary)
+  if (!summary) {
+    const summaryMatch = text.match(
+      /(?:概要|紹介文|本文|質疑概要|要約|内容|発言要旨|質問と答弁)\s*[:：]?\s*([\s\S]*?)(?=(?:出典|URL|https?:\/\/|$))/i
+    );
+    if (summaryMatch && summaryMatch[1].trim() && summaryMatch[1].trim().length >= 5) {
+      summary = summaryMatch[1].trim();
+      detected.push("要約");
+    } else {
+      let cleaned = text;
+      if (sourceUrl) {
+        cleaned = cleaned.replace(sourceUrl, "");
+      }
+      cleaned = cleaned
+        .replace(/(?:質問日|質疑日|開催日|発言日|日付|date)\s*[:：]?\s*[^\n]+\n?/gi, "")
+        .replace(/(?:会議名?|委員会名?|committee)\s*[:：]?\s*[^\n]+\n?/gi, "")
+        .replace(/(?:出典名?|情報源|参照|ソース|出典タイトル)\s*[:：]?\s*[^\n]+\n?/gi, "")
+        .trim();
+
+      if (cleaned.length > 0) {
+        summary = cleaned;
+        detected.push("要約");
+      } else {
+        summary = text;
+        detected.push("要約");
+      }
+    }
+  }
+
+  return {
+    item: {
+      date,
+      committee,
+      summary,
+      sourceUrl: sourceUrl || undefined,
+      sourceLabel: sourceLabel || undefined,
+    },
+    detected,
+  };
+}
+
 export default function AdminPage() {
   // ── 認証ステート ──
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -370,6 +501,9 @@ export default function AdminPage() {
   const [isSubmittingPolitician, setIsSubmittingPolitician] = useState(false);
   const [rawTextToParse, setRawTextToParse] = useState("");
   const [parseFeedback, setParseFeedback] = useState<string | null>(null);
+  const [rawFollowUpText, setRawFollowUpText] = useState("");
+  const [rawFollowUpUrl, setRawFollowUpUrl] = useState("");
+  const [followUpParseFeedback, setFollowUpParseFeedback] = useState<string | null>(null);
 
   // ── 制度モーダル（追加／編集） ──
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
@@ -576,6 +710,9 @@ export default function AdminPage() {
       });
     }
 
+    setRawFollowUpText("");
+    setRawFollowUpUrl("");
+    setFollowUpParseFeedback(null);
     setIsPoliticianModalOpen(true);
   }
 
@@ -584,6 +721,9 @@ export default function AdminPage() {
     setDraftRestoredNotice(false);
     setRawTextToParse("");
     setParseFeedback(null);
+    setRawFollowUpText("");
+    setRawFollowUpUrl("");
+    setFollowUpParseFeedback(null);
     setEditingPolitician({
       ...p,
       followUps: p.followUps ? p.followUps.map((f) => ({ ...f })) : [],
@@ -660,6 +800,32 @@ export default function AdminPage() {
     if (!editingPolitician || !editingPolitician.followUps) return;
     const updated = editingPolitician.followUps.filter((_, i) => i !== index);
     setEditingPolitician({ ...editingPolitician, followUps: updated });
+  }
+
+  function handleAutoParseFollowUp() {
+    if (!rawFollowUpText.trim() && !rawFollowUpUrl.trim()) {
+      alert("続報の要約テキストまたは出典URLを入力してください。");
+      return;
+    }
+    if (!editingPolitician) return;
+
+    const { item, detected } = parseFollowUpFromText(rawFollowUpText, rawFollowUpUrl);
+    const current = editingPolitician.followUps || [];
+    setEditingPolitician({
+      ...editingPolitician,
+      followUps: [...current, item],
+    });
+
+    if (detected.length > 0) {
+      setFollowUpParseFeedback(
+        `【続報 #${current.length + 1}】${detected.join("・")}を自動抽出して追加しました！`
+      );
+    } else {
+      setFollowUpParseFeedback(`【続報 #${current.length + 1}】を追加しました。`);
+    }
+
+    setRawFollowUpText("");
+    setRawFollowUpUrl("");
   }
 
   function handleAutoParsePolitician() {
@@ -1995,8 +2161,79 @@ export default function AdminPage() {
                     className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
                   >
                     <span>＋</span>
-                    <span>続報を追加する</span>
+                    <span>手動で追加</span>
                   </button>
+                </div>
+
+                {/* ── テキスト・URLから続報を自動取り込みエリア ── */}
+                <div className="mb-4 p-4 rounded-2xl bg-gradient-to-br from-purple-50/70 via-indigo-50/40 to-pink-50/50 border border-purple-200/80 shadow-2xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#8370AF] text-white text-xs shadow-xs">
+                        ✨
+                      </span>
+                      <span className="font-bold text-xs sm:text-sm text-purple-900">
+                        テキスト・URLから続報を自動取り込み
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-purple-700/80 bg-white/80 px-2 py-0.5 rounded-full border border-purple-100 font-medium">
+                      Muse / 議事録要約テキスト対応
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-600 mb-2.5 leading-relaxed">
+                    Muse等で作成した要約テキストと出典URLを貼り付けると、質問日・会議名・要約本文・出典リンクを自動判別して新しい続報として追加します（要約文は改変せずそのままセットされます）。
+                  </p>
+
+                  <div className="space-y-2">
+                    <textarea
+                      rows={3}
+                      value={rawFollowUpText}
+                      onChange={(e) => setRawFollowUpText(e.target.value)}
+                      placeholder="要約テキストを貼り付け（例: 質問日: 2026年10月30日 / 会議名: 衆議院・厚生労働委員会 / 内容: ... または要約文のみの貼り付けもOK）"
+                      className="w-full px-3 py-2 text-xs bg-white border border-purple-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-slate-700 placeholder-slate-400 leading-relaxed font-sans"
+                    />
+
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <input
+                        type="url"
+                        value={rawFollowUpUrl}
+                        onChange={(e) => setRawFollowUpUrl(e.target.value)}
+                        placeholder="出典URL（任意：テキスト内にURLが含まれている場合は空欄で自動抽出）"
+                        className="flex-1 w-full px-3 py-2 text-xs bg-white border border-purple-200/90 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-slate-700 font-mono text-[11px]"
+                      />
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                        <button
+                          type="button"
+                          onClick={handleAutoParseFollowUp}
+                          className="px-4 py-2 bg-[#8370AF] hover:bg-[#725e9e] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-98"
+                        >
+                          <span>✨ 取り込んで続報に追加</span>
+                        </button>
+                        {(rawFollowUpText || rawFollowUpUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRawFollowUpText("");
+                              setRawFollowUpUrl("");
+                              setFollowUpParseFeedback(null);
+                            }}
+                            className="px-2.5 py-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                          >
+                            クリア
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {followUpParseFeedback && (
+                    <div className="mt-2.5 text-[11px] font-medium text-purple-900 bg-white/95 border border-purple-200 px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>{followUpParseFeedback}</span>
+                    </div>
+                  )}
                 </div>
 
                 {(!editingPolitician.followUps || editingPolitician.followUps.length === 0) ? (
