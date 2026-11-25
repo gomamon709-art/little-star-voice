@@ -1,3 +1,12 @@
+export interface FollowUpItem {
+  id?: string;
+  date: string; // 質問日・開催日：例 2026年10月30日
+  committee: string; // 会議名・委員会名：例 衆議院・厚生労働委員会
+  summary: string; // 質問と答弁の要約テキスト
+  sourceUrl?: string; // 出典となる議事録URL
+  sourceLabel?: string; // 出典リンクの表示名：例 衆議院 会議録
+}
+
 export interface Politician {
   id: string;
   cardNo: string;
@@ -19,6 +28,7 @@ export interface Politician {
   sourceTitle?: string;
   sourceUrl?: string;
   xPostUrl?: string;
+  followUps?: FollowUpItem[]; // 続報（複数回の議会発言）
 }
 
 export const POLITICIANS_DATA: Politician[] = [

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { Politician } from "@/data/politicians";
+import { Politician, FollowUpItem } from "@/data/politicians";
 import { Policy, PolicyTheme } from "@/lib/policies-data";
 
 export interface CorrectionRequestItem {
@@ -572,6 +572,7 @@ export default function AdminPage() {
         sourceTitle: "",
         sourceUrl: "",
         xPostUrl: "",
+        followUps: [],
       });
     }
 
@@ -583,7 +584,10 @@ export default function AdminPage() {
     setDraftRestoredNotice(false);
     setRawTextToParse("");
     setParseFeedback(null);
-    setEditingPolitician({ ...p });
+    setEditingPolitician({
+      ...p,
+      followUps: p.followUps ? p.followUps.map((f) => ({ ...f })) : [],
+    });
     setIsPoliticianModalOpen(true);
   }
 
@@ -618,7 +622,44 @@ export default function AdminPage() {
       sourceTitle: "",
       sourceUrl: "",
       xPostUrl: "",
+      followUps: [],
     });
+  }
+
+  // ── 続報（複数回の議会発言）ハンドラ ──
+  function handleAddFollowUp() {
+    if (!editingPolitician) return;
+    const current = editingPolitician.followUps || [];
+    setEditingPolitician({
+      ...editingPolitician,
+      followUps: [
+        ...current,
+        {
+          date: new Date().toLocaleDateString("ja-JP", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+          committee: "",
+          summary: "",
+          sourceUrl: "",
+          sourceLabel: "",
+        },
+      ],
+    });
+  }
+
+  function handleUpdateFollowUp(index: number, field: keyof FollowUpItem, value: string) {
+    if (!editingPolitician || !editingPolitician.followUps) return;
+    const updated = [...editingPolitician.followUps];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditingPolitician({ ...editingPolitician, followUps: updated });
+  }
+
+  function handleRemoveFollowUp(index: number) {
+    if (!editingPolitician || !editingPolitician.followUps) return;
+    const updated = editingPolitician.followUps.filter((_, i) => i !== index);
+    setEditingPolitician({ ...editingPolitician, followUps: updated });
   }
 
   function handleAutoParsePolitician() {
@@ -1383,7 +1424,14 @@ export default function AdminPage() {
                           {p.cardNo}
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-800 text-sm">{p.name}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-800 text-sm">{p.name}</span>
+                            {p.followUps && p.followUps.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
+                                ✨ 続報 {p.followUps.length}件
+                              </span>
+                            )}
+                          </div>
                           {p.kana && <div className="text-[11px] text-slate-400">{p.kana}</div>}
                           <div className="text-xs text-slate-600 mt-0.5">
                             <span className="inline-block bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-medium mr-1.5">
@@ -1924,6 +1972,128 @@ export default function AdminPage() {
                   placeholder="https://x.com/lsvsince2026/status/..."
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#288365]/20 font-mono text-xs text-sky-700"
                 />
+              </div>
+
+              {/* ── 続報（複数回の議会発言）セクション ── */}
+              <div className="pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <label className="block font-semibold text-slate-800 text-sm flex items-center gap-1.5">
+                      <span>✨</span>
+                      <span>続報・その後の議会発言（複数登録可）</span>
+                      <span className="text-xs font-normal text-slate-500">
+                        （{(editingPolitician.followUps || []).length}件）
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      同じ議員による2回目以降の議会質問やフォローアップ発言を追加できます
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddFollowUp}
+                    className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>＋</span>
+                    <span>続報を追加する</span>
+                  </button>
+                </div>
+
+                {(!editingPolitician.followUps || editingPolitician.followUps.length === 0) ? (
+                  <div className="p-3 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-slate-400 text-xs">
+                    まだ続報はありません。「＋ 続報を追加する」ボタンから複数回の発言を追加できます。
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {editingPolitician.followUps.map((fu, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-2xl bg-gradient-to-br from-purple-50/40 via-white to-pink-50/20 border border-purple-100/90 shadow-2xs space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between pb-2 border-b border-purple-100/60">
+                          <span className="text-xs font-extrabold text-[#8370AF] flex items-center gap-1">
+                            <span>#{idx + 1}</span>
+                            <span>続報データ</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFollowUp(idx)}
+                            className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded transition cursor-pointer flex items-center gap-1"
+                          >
+                            <span>✕ 削除</span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                              質問日・開催日 <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={fu.date}
+                              onChange={(e) => handleUpdateFollowUp(idx, "date", e.target.value)}
+                              placeholder="例: 2026年10月30日"
+                              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                              会議名・委員会名
+                            </label>
+                            <input
+                              type="text"
+                              value={fu.committee}
+                              onChange={(e) => handleUpdateFollowUp(idx, "committee", e.target.value)}
+                              placeholder="例: 衆議院・厚生労働委員会"
+                              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            質問と答弁の要約テキスト <span className="text-rose-500">*</span>
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={fu.summary}
+                            onChange={(e) => handleUpdateFollowUp(idx, "summary", e.target.value)}
+                            placeholder="その後の議会質疑の要約や進展内容を入力してください。"
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200 leading-relaxed"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                              出典リンク表示名
+                            </label>
+                            <input
+                              type="text"
+                              value={fu.sourceLabel || ""}
+                              onChange={(e) => handleUpdateFollowUp(idx, "sourceLabel", e.target.value)}
+                              placeholder="例: 衆議院 会議録"
+                              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                              出典URL
+                            </label>
+                            <input
+                              type="url"
+                              value={fu.sourceUrl || ""}
+                              onChange={(e) => handleUpdateFollowUp(idx, "sourceUrl", e.target.value)}
+                              placeholder="https://..."
+                              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200 font-mono text-[11px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3">

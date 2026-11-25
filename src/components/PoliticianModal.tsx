@@ -140,6 +140,52 @@ export function PoliticianModal({ politician, onClose }: PoliticianModalProps) {
           </div>
         )}
 
+        {/* Follow-ups Section in Modal */}
+        {politician.followUps && politician.followUps.length > 0 && (
+          <div className="mb-5">
+            <h4 className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1.5">
+              <span>✨</span>
+              <span>続報・その後の議会発言（{politician.followUps.length}件）</span>
+            </h4>
+            <div className="space-y-3">
+              {politician.followUps.map((fu, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/60 via-slate-50/40 to-pink-50/30 border border-purple-100 shadow-2xs"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                    <span className="font-bold text-[#8370AF] text-xs sm:text-sm flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#8370AF]" />
+                      <span>{fu.committee || "議会質問・発言"}</span>
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-purple-100">
+                      {fu.date}
+                    </span>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line mb-2.5">
+                    {fu.summary}
+                  </p>
+
+                  {fu.sourceUrl && (
+                    <div className="text-right">
+                      <a
+                        href={fu.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#8370AF] hover:underline font-bold inline-flex items-center gap-1 text-xs"
+                      >
+                        <span>出典：{fu.sourceLabel || "公式議事録を開く"}</span>
+                        <span>↗</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Actions in Modal */}
         <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
           <a

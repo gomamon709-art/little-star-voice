@@ -45,6 +45,7 @@ export interface PoliticianRow {
   source_title?: string | null;
   source_url?: string | null;
   x_post_url?: string | null;
+  follow_ups?: any[] | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -85,6 +86,16 @@ export function politicianFromRow(row: PoliticianRow): Politician {
     sourceTitle: row.source_title || undefined,
     sourceUrl: row.source_url || undefined,
     xPostUrl: row.x_post_url || undefined,
+    followUps: Array.isArray(row.follow_ups)
+      ? row.follow_ups.map((f: any) => ({
+          id: f.id || undefined,
+          date: f.date || "",
+          committee: f.committee || "",
+          summary: f.summary || "",
+          sourceUrl: f.source_url || f.sourceUrl || undefined,
+          sourceLabel: f.source_label || f.sourceLabel || undefined,
+        }))
+      : undefined,
   };
 }
 
@@ -110,6 +121,15 @@ export function politicianToRow(p: Partial<Politician>): Record<string, any> {
   if (p.sourceTitle !== undefined) row.source_title = p.sourceTitle || null;
   if (p.sourceUrl !== undefined) row.source_url = p.sourceUrl || null;
   if (p.xPostUrl !== undefined) row.x_post_url = p.xPostUrl || null;
+  if (p.followUps !== undefined) {
+    row.follow_ups = p.followUps.map((f) => ({
+      date: f.date || "",
+      committee: f.committee || "",
+      summary: f.summary || "",
+      source_url: f.sourceUrl || null,
+      source_label: f.sourceLabel || null,
+    }));
+  }
   return row;
 }
 
